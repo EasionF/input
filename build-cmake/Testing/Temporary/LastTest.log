@@ -1,0 +1,35 @@
+Start testing: Sep 11 17:18 ÖÐ¹ú±ê×¼Ê±¼ä
+----------------------------------------------------------
+1/2 Testing: ring
+1/2 Test: ring
+Command: "C:/Users/yangy/Documents/New project/è¾“å…¥æ³•/build-cmake/test_ring.exe"
+Directory: C:/Users/yangy/Documents/New project/è¾“å…¥æ³•/build-cmake
+"ring" start time: Sep 11 17:18 ÖÐ¹ú±ê×¼Ê±¼ä
+Output:
+----------------------------------------------------------
+ring tests OK
+<end of output>
+Test time =   0.09 sec
+----------------------------------------------------------
+Test Passed.
+"ring" end time: Sep 11 17:18 ÖÐ¹ú±ê×¼Ê±¼ä
+"ring" time elapsed: 00:00:00
+----------------------------------------------------------
+
+2/2 Testing: channel
+2/2 Test: channel
+Command: "C:/Users/yangy/Documents/New project/è¾“å…¥æ³•/build-cmake/test_channel.exe"
+Directory: C:/Users/yangy/Documents/New project/è¾“å…¥æ³•/build-cmake
+"channel" start time: Sep 11 17:18 ÖÐ¹ú±ê×¼Ê±¼ä
+Output:
+----------------------------------------------------------
+channel test OK
+<end of output>
+Test time =   0.08 sec
+----------------------------------------------------------
+Test Passed.
+"channel" end time: Sep 11 17:18 ÖÐ¹ú±ê×¼Ê±¼ä
+"channel" time elapsed: 00:00:00
+----------------------------------------------------------
+
+End testing: Sep 11 17:18 ÖÐ¹ú±ê×¼Ê±¼ä

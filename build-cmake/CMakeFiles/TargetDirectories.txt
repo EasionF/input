@@ -1,0 +1,6 @@
+C:/Users/yangy/Documents/New project/输入法/build-cmake/CMakeFiles/netroom_ipc.dir
+C:/Users/yangy/Documents/New project/输入法/build-cmake/CMakeFiles/test_ring.dir
+C:/Users/yangy/Documents/New project/输入法/build-cmake/CMakeFiles/test_channel.dir
+C:/Users/yangy/Documents/New project/输入法/build-cmake/CMakeFiles/test.dir
+C:/Users/yangy/Documents/New project/输入法/build-cmake/CMakeFiles/edit_cache.dir
+C:/Users/yangy/Documents/New project/输入法/build-cmake/CMakeFiles/rebuild_cache.dir
