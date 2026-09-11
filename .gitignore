@@ -27,3 +27,7 @@ Thumbs.db
 build-cmake/
 build-msvc/
 
+# vendored build deps
+.librime/
+.vcpkg/
+

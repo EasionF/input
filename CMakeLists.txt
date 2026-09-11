@@ -7,7 +7,7 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 
 # MSVC 显式 /std:c++17 + UTF-8 源文件
 if(MSVC)
-    add_compile_options(/std:c++17 /utf-8 /W4 /permissive-)
+    add_compile_options(/std:c++17 /utf-8 /W4 /permissive- /EHsc)
 endif()
 
 add_library(netroom_ipc STATIC
@@ -32,4 +32,19 @@ if(NETROOM_BUILD_TESTS)
     add_executable(test_codec tests/test_codec.cpp)
     target_link_libraries(test_codec PRIVATE netroom_ipc)
     add_test(NAME codec COMMAND test_codec)
+endif()
+
+# ---- 净室 TSF 前端壳（宿主 DLL，注入目标应用进程） ----
+option(NETROOM_BUILD_TFS "" ON)
+if(NETROOM_BUILD_TFS)
+    add_library(netroom_tsf SHARED
+        netroom/tfs_host/tfs_module.cpp
+        netroom/tfs_host/tfs_service.cpp
+    )
+    target_include_directories(netroom_tsf PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+    target_link_libraries(netroom_tsf PRIVATE netroom_ipc)
+    target_compile_definitions(netroom_tsf PRIVATE UNICODE _UNICODE IME_TSF_BUILD)
+    set_target_properties(netroom_tsf PROPERTIES
+        OUTPUT_NAME "netroom_tsf"
+        PREFIX "")
 endif()
