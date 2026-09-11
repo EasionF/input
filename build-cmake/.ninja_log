@@ -1,8 +1,0 @@
-# ninja log v7
-67	938	8108215257371370	CMakeFiles/netroom_ipc.dir/netroom/ipc/ring_buffer.cpp.obj	a88656ed10d3b2cb
-93	1231	8108215257634042	CMakeFiles/test_ring.dir/tests/test_ring.cpp.obj	c05ad067cec6fed4
-83	5126	8108215257538817	CMakeFiles/netroom_ipc.dir/netroom/ipc/ime_channel.cpp.obj	f6f122d15a231fe4
-104	5210	8108215257744214	CMakeFiles/test_channel.dir/tests/test_channel.cpp.obj	6e818446e8c7765d
-5131	5721	8108215308012042	libnetroom_ipc.a	933d7f8779e1baa1
-5739	6039	8108215314095930	test_channel.exe	382cb981cd13de7a
-5721	6048	8108215313917356	test_ring.exe	9bfc2a5ee75395e9

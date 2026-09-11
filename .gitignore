@@ -21,3 +21,8 @@ Thumbs.db
 
 # local only
 .cloned_repo/
+
+
+# CMake build
+build-cmake/
+
