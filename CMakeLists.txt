@@ -13,6 +13,7 @@ endif()
 add_library(netroom_ipc STATIC
     netroom/ipc/ring_buffer.cpp
     netroom/ipc/ime_channel.cpp
+    netroom/ipc/frame_codec.cpp
 )
 target_include_directories(netroom_ipc PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 
@@ -28,4 +29,7 @@ if(NETROOM_BUILD_TESTS)
     add_executable(test_channel tests/test_channel.cpp)
     target_link_libraries(test_channel PRIVATE netroom_ipc)
     add_test(NAME channel COMMAND test_channel)
+    add_executable(test_codec tests/test_codec.cpp)
+    target_link_libraries(test_codec PRIVATE netroom_ipc)
+    add_test(NAME codec COMMAND test_codec)
 endif()
