@@ -25,4 +25,5 @@ Thumbs.db
 
 # CMake build
 build-cmake/
+build-msvc/
 
