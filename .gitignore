@@ -1,0 +1,23 @@
+# Build
+build/
+out/
+cmake-build-*/
+*.o
+*.obj
+*.exe
+*.pdb
+*.ilk
+
+# vcpkg
+vcpkg_installed/
+
+# IDE
+.vscode/
+.idea/
+*.user
+
+# Windows
+Thumbs.db
+
+# local only
+.cloned_repo/
