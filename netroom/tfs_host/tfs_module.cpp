@@ -93,15 +93,13 @@ STDMETHODIMP DllCanUnloadNow() {
 
 STDMETHODIMP DllRegisterServer() {
     std::wstring gs  = GuidToString(CLSID_NetRoomTextService);
-    // 用当前用户注册表，免管理员权限；路径取本 DLL 实际所在目录。
-    // HKLM 版：注册为远程/会话布局需管理员 + 需一次登录；HKCU 对单机测试更友好。
+    std::wstring pg  = GuidToString(GUID_NetRoomProfile);
     const HKEY root = HKEY_CURRENT_USER;
     std::wstring tip = std::wstring(L"Software\\Microsoft\\CTF\\TIP\\") + gs;
     std::wstring cl  = std::wstring(L"Software\\Classes\\CLSID\\") + gs;
     std::wstring inproc = cl + L"\\InprocServer32";
 
     wchar_t dllPath[MAX_PATH] = {0};
-    // 取本 DLL（而非宿主进程 regsvr32.exe）的绝对路径。
     HMODULE hmod = nullptr;
     ::GetModuleHandleExW(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS |
                              GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
@@ -113,17 +111,51 @@ STDMETHODIMP DllRegisterServer() {
     WriteStr(root, inproc, L"ThreadingModel", L"Both");
 
     WriteStr(root, tip, nullptr, L"netroom input method");
-    WriteStr(root, tip + L"\\Enable", L"", L"1");
-    // 键盘布局入口：适用于 0409 (US)。其他布局见配置阶段。
+    // TIP 级启用标记
+    WriteDword(root, tip + L"\\Enable", L"", 1);
+    // 语言配置文件：TSF 依据它把文本服务列为一种“输入法”。
+    // 值 {0x00000000} 为显示名（可按 len-res 形式，这里直接用字符串）。
+    std::wstring langProfile = tip + L"\\LanguageProfile\\00000409\\" + pg;
+    WriteStr(root, langProfile, nullptr, L"");
+    WriteStr(root, langProfile, L"{0x00000000}", L"netroom input method");
+    std::wstring iconFile = std::wstring(dllPath) + L",0";
+    WriteStr(root, langProfile, L"{0x00000001}", iconFile.c_str());
+    // 键盘布局入口（US 0409）
     WriteDword(root, tip + L"\\KeyboardLayout\\00000409", L"", 0xE0200804);
+
+    // 官方 API 注册 + 使能：最可靠地让 OS 枚举出该输入法
+    ::CoInitializeEx(nullptr, COINIT_MULTITHREADED);
+    ITfInputProcessorProfiles* pProfiles = nullptr;
+    if (SUCCEEDED(::CoCreateInstance(CLSID_TF_InputProcessorProfiles, nullptr, CLSCTX_INPROC_SERVER,
+                                     IID_ITfInputProcessorProfiles, (void**)&pProfiles))) {
+        const wchar_t kDesc[] = L"netroom input method";
+        pProfiles->AddLanguageProfile(CLSID_NetRoomTextService, 0x0409,
+                                      GUID_NetRoomProfile, kDesc,
+                                      static_cast<ULONG>(wcslen(kDesc)),
+                                      dllPath, static_cast<ULONG>(wcslen(dllPath)), 0);
+        pProfiles->EnableLanguageProfile(CLSID_NetRoomTextService, 0x0409,
+                                         GUID_NetRoomProfile, TRUE);
+        pProfiles->Release();
+    }
+    ::CoUninitialize();
     return S_OK;
 }
 
 STDMETHODIMP DllUnregisterServer() {
-    std::wstring gs = GuidToString(CLSID_NetRoomTextService);
+    std::wstring gs  = GuidToString(CLSID_NetRoomTextService);
+    std::wstring pg  = GuidToString(GUID_NetRoomProfile);
     const HKEY root = HKEY_CURRENT_USER;
     ClearTree(root, std::wstring(L"Software\\Microsoft\\CTF\\TIP\\") + gs);
     ClearTree(root, std::wstring(L"Software\\Classes\\CLSID\\") + gs);
+    // 官方 API 注销
+    ::CoInitializeEx(nullptr, COINIT_MULTITHREADED);
+    ITfInputProcessorProfiles* pProfiles = nullptr;
+    if (SUCCEEDED(::CoCreateInstance(CLSID_TF_InputProcessorProfiles, nullptr, CLSCTX_INPROC_SERVER,
+                                     IID_ITfInputProcessorProfiles, (void**)&pProfiles))) {
+        pProfiles->RemoveLanguageProfile(CLSID_NetRoomTextService, 0x0409, GUID_NetRoomProfile);
+        pProfiles->Release();
+    }
+    ::CoUninitialize();
     return S_OK;
 }
 
