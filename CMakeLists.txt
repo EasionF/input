@@ -40,6 +40,7 @@ if(NETROOM_BUILD_TFS)
     add_library(netroom_tsf SHARED
         netroom/tfs_host/tfs_module.cpp
         netroom/tfs_host/tfs_service.cpp
+        netroom/tfs_host/netroom_tsf.def
     )
     target_include_directories(netroom_tsf PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
     target_link_libraries(netroom_tsf PRIVATE netroom_ipc netroom_host)

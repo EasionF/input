@@ -93,25 +93,37 @@ STDMETHODIMP DllCanUnloadNow() {
 
 STDMETHODIMP DllRegisterServer() {
     std::wstring gs  = GuidToString(CLSID_NetRoomTextService);
+    // 用当前用户注册表，免管理员权限；路径取本 DLL 实际所在目录。
+    // HKLM 版：注册为远程/会话布局需管理员 + 需一次登录；HKCU 对单机测试更友好。
+    const HKEY root = HKEY_CURRENT_USER;
     std::wstring tip = std::wstring(L"Software\\Microsoft\\CTF\\TIP\\") + gs;
     std::wstring cl  = std::wstring(L"Software\\Classes\\CLSID\\") + gs;
     std::wstring inproc = cl + L"\\InprocServer32";
 
-    WriteStr(HKEY_LOCAL_MACHINE, cl, nullptr, L"netroom input method");
-    WriteStr(HKEY_LOCAL_MACHINE, inproc, nullptr, L"netroom_tsf.dll");
-    WriteStr(HKEY_LOCAL_MACHINE, inproc, L"ThreadingModel", L"Both");
+    wchar_t dllPath[MAX_PATH] = {0};
+    // 取本 DLL（而非宿主进程 regsvr32.exe）的绝对路径。
+    HMODULE hmod = nullptr;
+    ::GetModuleHandleExW(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS |
+                             GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
+                         reinterpret_cast<LPCWSTR>(&DllRegisterServer), &hmod);
+    ::GetModuleFileNameW(hmod, dllPath, MAX_PATH);
 
-    WriteStr(HKEY_LOCAL_MACHINE, tip, nullptr, L"netroom input method");
-        WriteStr(HKEY_LOCAL_MACHINE, tip + L"\\Enable", L"", L"1");
-    // 键盘布局入口：适用于 0409 (US) root；00000804 = 中文(新加坡) 等可在后续 config 细化
-    WriteDword(HKEY_LOCAL_MACHINE, tip + L"\\KeyboardLayout\\00000409", L"", 0xE0200804);
+    WriteStr(root, cl, nullptr, L"netroom input method");
+    WriteStr(root, inproc, nullptr, dllPath);
+    WriteStr(root, inproc, L"ThreadingModel", L"Both");
+
+    WriteStr(root, tip, nullptr, L"netroom input method");
+    WriteStr(root, tip + L"\\Enable", L"", L"1");
+    // 键盘布局入口：适用于 0409 (US)。其他布局见配置阶段。
+    WriteDword(root, tip + L"\\KeyboardLayout\\00000409", L"", 0xE0200804);
     return S_OK;
 }
 
 STDMETHODIMP DllUnregisterServer() {
     std::wstring gs = GuidToString(CLSID_NetRoomTextService);
-    ClearTree(HKEY_LOCAL_MACHINE, std::wstring(L"Software\\Microsoft\\CTF\\TIP\\") + gs);
-    ClearTree(HKEY_LOCAL_MACHINE, std::wstring(L"Software\\Classes\\CLSID\\") + gs);
+    const HKEY root = HKEY_CURRENT_USER;
+    ClearTree(root, std::wstring(L"Software\\Microsoft\\CTF\\TIP\\") + gs);
+    ClearTree(root, std::wstring(L"Software\\Classes\\CLSID\\") + gs);
     return S_OK;
 }
 
