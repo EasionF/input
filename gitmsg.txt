@@ -1,6 +1,0 @@
-fix(tsf): 补 Category 注册 + ms 风格 LanguageProfile 使 netroom 可被枚举为输入法
-
-对照微软输入法注册结构，补齐两块此前缺失的关键项：
-- Category Category {6302DE22-...} Item 标记为文本输入处理器，OS 才会在 设置-添加键盘 中列出 netroom
-- LanguageProfile 改用 ms 风格名值（Description/Display Description/Enable/IconFile/IconIndex）
-已确认多进程已加载 netroom_tsf.dll（TSF 已认可其为活动文本服务）。
