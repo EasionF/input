@@ -102,17 +102,24 @@ static void RegisterTipAt(HKEY root, const std::wstring& gs, const std::wstring&
     WriteStr(root, tip, nullptr, L"netroom input method");
     WriteStr(root, tip + L"\\InprocServer32", nullptr, dllPath);   // 兼容旧式 TIP
     WriteDword(root, tip + L"\\Enable", L"", 1);
-    std::wstring iconFile = std::wstring(dllPath) + L",0";
+    // TSF 类别：标记为文本输入处理器，OS 才会在“添加键盘”里列出 netroom
+    WriteStr(root, tip + L"\\Category\\Category\\{6302DE22-A5CF-4B02-BFE8-4D72B2BED3C6}\\" + gs, nullptr, L"");
+    WriteStr(root, tip + L"\\Category\\Item\\" + gs, nullptr, L"netroom input method");
+    WriteStr(root, tip + L"\\Category\\Item\\" + gs +
+                 L"\\{6302DE22-A5CF-4B02-BFE8-4D72B2BED3C6}", nullptr, L"");
     const LANGID kLangs[] = { 0x0409, 0x0804 };   // en-US / zh-CN
     for (LANGID lang : kLangs) {
         wchar_t langKey[64];
-        wsprintfW(langKey, L"\\LanguageProfile\\%08X\\", static_cast<unsigned>(lang));
+        wsprintfW(langKey, L"\\LanguageProfile\\0x%08X\\", static_cast<unsigned>(lang));
         std::wstring lp = tip + langKey + pg;
-        WriteStr(root, lp, nullptr, L"");
-        WriteStr(root, lp, L"{0x00000000}", L"netroom input method");
-        WriteStr(root, lp, L"{0x00000001}", iconFile.c_str());
+        WriteStr(root, lp, L"Description", L"netroom input method");
+        WriteStr(root, lp, L"Display Description", L"netroom input method");
+        WriteDword(root, lp, L"Enable", 1);
+        WriteStr(root, lp, L"IconFile", dllPath);
+        WriteDword(root, lp, L"IconIndex", 0);
     }
     WriteDword(root, tip + L"\\KeyboardLayout\\00000409", L"", 0xE0200804);
+    WriteDword(root, tip + L"\\KeyboardLayout\\00000804", L"", 0xE0200804);
 }
 
 STDMETHODIMP DllRegisterServer() {
