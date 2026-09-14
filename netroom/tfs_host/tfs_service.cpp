@@ -1,4 +1,6 @@
 #include "tfs_service.h"
+#include <ctffunc.h>
+#include "../host/composition_kit.h"
 #include "../ipc/ime_shared.h"
 #include <new>
 #include <string>
@@ -6,6 +8,9 @@
 #include <chrono>
 
 using namespace netroom::ipc;
+using netroom::host::HostActionKind;
+using netroom::host::HostAction;
+using netroom::host::Apply;
 
 // ---- 8ms 裕度：Daemon 无响应即 passthrough，绝不阻塞宿主按键 ----
 static constexpr DWORD kDaemonReplyBudgetMs = 8;
@@ -18,6 +23,7 @@ CTextService::CTextService() = default;
 
 CTextService::~CTextService() {
     if (threadMgr_) { threadMgr_->Release(); threadMgr_ = nullptr; }
+    if (composition_) { composition_->Release(); composition_ = nullptr; }
     TeardownIpc();
 }
 
@@ -190,22 +196,31 @@ STDMETHODIMP CTextService::OnKeyDown(ITfContext* pic, WPARAM wParam, LPARAM lPar
             break;
         CandidateFrame cf;
         if (DecodeCandidate(body.data(), len, cf)) {
-            if (cf.status == 0) {                // active -> 组合
-                composing_ = true;
-                StartComposition(pic);
-                SetCompositionString(pic, cf.composition, cf.caret);
-                pendingText_ = cf.composition;
-                *pfEaten = TRUE;
-            } else if (cf.status == 1) {         // committed
-                CommitComposition(pic, cf.composition);
-                composing_ = false;
-                *pfEaten = TRUE;
-            } else if (cf.status == 2) {         // abandoned
-                ClearCompositionCache();
-                composing_ = false;
-                *pfEaten = (pendingText_.empty() ? FALSE : TRUE);
-            } else {                             // passthrough
-                *pfEaten = FALSE;
+            HostAction act = Apply(cf);
+            switch (act.kind) {
+                case HostActionKind::UpdateComposition:   // 组合
+                    composing_ = true;
+                    StartComposition(pic);
+                    SetCompositionString(pic, act.utf8Text, act.caret);
+                    pendingText_ = act.utf8Text;
+                    *pfEaten = TRUE;
+                    break;
+                case HostActionKind::Commit:              // 提交
+                    CommitComposition(pic, act.utf8Text);
+                    composing_ = false;
+                    pendingText_.clear();
+                    EndCompositionNow();
+                    *pfEaten = TRUE;
+                    break;
+                case HostActionKind::ClearComposition:    // 放弃
+                    composing_ = false;
+                    pendingText_.clear();
+                    EndCompositionNow();
+                    *pfEaten = TRUE;
+                    break;
+                default:                                   // 放行
+                    *pfEaten = FALSE;
+                    break;
             }
         }
     }
@@ -266,8 +281,11 @@ STDMETHODIMP CTextService::OnPopContext(ITfContext* pContext) {
 
 // ---- CompositionSink ----
 
-STDMETHODIMP CTextService::OnCompositionTerminated(TfEditCookie, ITfComposition*) {
+STDMETHODIMP CTextService::OnCompositionTerminated(TfEditCookie, ITfComposition* pComp) {
     // 外部强制终止 -> 自愈：清空本地组合态与品质缓存
+    // 组合被外部/自身终止：释放该组合并清空本地指针与缓存
+    if (composition_ == pComp) { composition_ = nullptr; }
+    if (pComp) pComp->Release();
     ClearCompositionCache();
     if (ipcReady_ && keySend_) {
         CommandFrame cmd; cmd.kind = CommandKind::Terminate;
@@ -284,32 +302,153 @@ STDMETHODIMP CTextService::OnCleanupContext(TfEditCookie, ITfContext*) {
     return S_OK;
 }
 
-// ---- 组合/上屏（净室，直接使用 TSF Range/Composition）----
+// ---- 组合/上屏：用 TSF 写编辑会话把候选帧落到目标窗口 ----
+// 设计：组合语义（composition_kit）已独立且可无头单测；这里只剩 TSF 机制薄层。
+
+namespace {
+class CEditSession : public ITfEditSession {
+public:
+    CEditSession(void (*fn)(TfEditCookie, void*), void* ctx) : fn_(fn), ctx_(ctx) {}
+
+    STDMETHODIMP QueryInterface(REFIID riid, void** ppv) override {
+        if (IsEqualIID(riid, IID_IUnknown) || IsEqualIID(riid, IID_ITfEditSession)) {
+            *ppv = static_cast<ITfEditSession*>(this); AddRef(); return S_OK;
+        }
+        *ppv = nullptr; return E_NOINTERFACE;
+    }
+    STDMETHODIMP_(ULONG) AddRef() override { return static_cast<ULONG>(InterlockedIncrement(&ref_)); }
+    STDMETHODIMP_(ULONG) Release() override {
+        LONG r = InterlockedDecrement(&ref_);
+        if (r == 0) delete this;
+        return static_cast<ULONG>(r);
+    }
+    STDMETHODIMP DoEditSession(TfEditCookie ec) override { fn_(ec, ctx_); return S_OK; }
+private:
+    void (*fn_)(TfEditCookie, void*);
+    void* ctx_;
+    LONG ref_ = 1;
+};
+
+// 0=提交  1=组合串更新  2=结束组合  3=仅起动组合
+struct SessionJob {
+    CTextService* svc;
+    ITfContext* pic;
+    int kind;
+    std::wstring text;
+};
+
+void InsertCommitText(TfEditCookie ec, ITfContext* pic, const std::wstring& text) {
+    ITfInsertAtSelection* pIns = nullptr;
+    if (!pic || FAILED(pic->QueryInterface(IID_ITfInsertAtSelection, (void**)&pIns))) return;
+    TF_SELECTION sel{};
+    ULONG fetched = 0;
+    if (pic->GetSelection(ec, TF_DEFAULT_SELECTION, 1, &sel, &fetched) == S_OK && fetched == 1) {
+        ITfRange* outRange = nullptr;
+        pIns->InsertTextAtSelection(ec, TF_IAS_NO_DEFAULT_COMPOSITION, text.c_str(),
+                                    static_cast<LONG>(text.size()), &outRange);
+        if (outRange) outRange->Release();
+        sel.range->Release();
+    }
+    pIns->Release();
+}
+
+void EditSessionFn(TfEditCookie ec, void* v) {
+    SessionJob* j = static_cast<SessionJob*>(v);
+    switch (j->kind) {
+        case 0:  // 提交：先结束组合，再在光标处插入文本
+            j->svc->EndCompInSession(ec, j->pic);
+            InsertCommitText(ec, j->pic, j->text);
+            break;
+        case 1:  // 组合串更新（若未起动会先起动）
+            j->svc->UpdateCompInSession(ec, j->pic, j->text);
+            break;
+        case 2:  // 结束组合
+            j->svc->EndCompInSession(ec, j->pic);
+            break;
+        case 3:  // 仅起动组合
+            j->svc->StartCompInSession(ec, j->pic);
+            break;
+        default:
+            break;
+    }
+}
+}  // namespace
+
+bool CTextService::RequestWriteSession(ITfContext* pic,
+                                       void (*fn)(TfEditCookie, void*), void* ctx) {
+    if (!pic || !fn) return false;
+    CEditSession* es = new CEditSession(fn, ctx);
+    HRESULT hrSession = E_FAIL;
+    HRESULT hr = pic->RequestEditSession(clientId_, es, TF_ES_SYNC | TF_ES_READWRITE, &hrSession);
+    es->Release();
+    return SUCCEEDED(hr) && SUCCEEDED(hrSession);
+}
 
 bool CTextService::StartComposition(ITfContext* pic) {
-    if (!pic) return false;
-    ITfContextComposition* pCompose = nullptr;
-    if (FAILED(pic->QueryInterface(IID_ITfContextComposition, (void**)&pCompose)))
-        return false;
-    pCompose->Release();
-    return true;
+    SessionJob job{this, pic, /*kind*/3, {}};
+    return RequestWriteSession(pic, &EditSessionFn, &job);
 }
 
 bool CTextService::SetCompositionString(ITfContext* pic, const std::string& utf8, std::uint32_t) {
-    if (!pic) return false;
-    // 获取文档管理器->顶部上下文否则用传入 pic
-    ITfContext* ctx = focusContext_ ? focusContext_ : pic;
-    // 用 ITfRange 向组合串回设文本；失败也应保持（不阻断键）。
-    // 组合串回设需要读写锁定上下文，需走 ITfContext::RequestEditSession。
-    // 本壳在此仅登记待提交文本，由后台编辑会话路径（M1）真正落盘；失败也不阻断键。
-    (void)ctx; (void)utf8;
-    return false;
+    std::wstring w;
+    if (!netroom::host::Utf8ToWide(utf8, &w)) return false;
+    SessionJob job{this, pic, /*kind*/1, w};
+    return RequestWriteSession(pic, &EditSessionFn, &job);
 }
+
 bool CTextService::CommitComposition(ITfContext* pic, const std::string& utf8) {
-    (void)pic; (void)utf8;
-    ClearCompositionCache();
+    std::wstring w;
+    netroom::host::Utf8ToWide(utf8, &w);
+    SessionJob job{this, pic, /*kind*/0, w};
+    return RequestWriteSession(pic, &EditSessionFn, &job) || w.empty();
+}
+
+void CTextService::EndCompositionNow() {
+    if (!composition_) return;
+    SessionJob job{this, focusContext_, /*kind*/2, {}};
+    if (focusContext_) RequestWriteSession(focusContext_, &EditSessionFn, &job);
+}
+
+bool CTextService::StartCompInSession(TfEditCookie ec, ITfContext* pic) {
+    if (composition_) return true;
+    if (!pic) return false;
+    TF_SELECTION sel{};
+    ULONG fetched = 0;
+    ITfRange* base = nullptr;
+    if (pic->GetSelection(ec, TF_DEFAULT_SELECTION, 1, &sel, &fetched) == S_OK && fetched == 1)
+        base = sel.range;
+    else if (pic->GetStart(ec, &base) != S_OK)
+        base = nullptr;
+    if (!base) return false;
+    ITfContextComposition* pCompose = nullptr;
+    if (FAILED(pic->QueryInterface(IID_ITfContextComposition, (void**)&pCompose))) {
+        base->Release(); return false;
+    }
+    HRESULT hr = pCompose->StartComposition(ec, base, static_cast<ITfCompositionSink*>(this),
+                                            &composition_);
+    pCompose->Release();
+    base->Release();
+    return SUCCEEDED(hr) && composition_ != nullptr;
+}
+
+bool CTextService::UpdateCompInSession(TfEditCookie ec, ITfContext* pic, const std::wstring& text) {
+    if (!StartCompInSession(ec, pic)) return false;
+    ITfRange* range = nullptr;
+    if (composition_ && SUCCEEDED(composition_->GetRange(&range))) {
+        range->SetText(ec, 0, text.c_str(), static_cast<LONG>(text.size()));
+        range->Release();
+    }
     return true;
 }
+
+bool CTextService::EndCompInSession(TfEditCookie, ITfContext*) {
+    if (!composition_) return true;
+    HRESULT hr = composition_->EndComposition(0);
+    ClearCompositionPtr();
+    return SUCCEEDED(hr);
+}
+
 void CTextService::ClearCompositionCache() {
     pendingText_.clear();
+    // 不在此释放 composition_：组合生命周期由 StartComposition/EndComposition 与 OnCompositionTerminated 负责
 }

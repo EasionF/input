@@ -42,7 +42,7 @@ if(NETROOM_BUILD_TFS)
         netroom/tfs_host/tfs_service.cpp
     )
     target_include_directories(netroom_tsf PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
-    target_link_libraries(netroom_tsf PRIVATE netroom_ipc)
+    target_link_libraries(netroom_tsf PRIVATE netroom_ipc netroom_host)
     target_compile_definitions(netroom_tsf PRIVATE UNICODE _UNICODE IME_TSF_BUILD)
     set_target_properties(netroom_tsf PROPERTIES
         OUTPUT_NAME "netroom_tsf"
@@ -71,3 +71,15 @@ if(NETROOM_BUILD_DAEMON_TESTS)
     add_test(NAME daemon_integration COMMAND test_start_daemon)
     set_tests_properties(daemon_integration PROPERTIES TIMEOUT 60)
 endif()
+
+# ---- 宿主组合语义（无 TSF 依赖，可无头单测） ----
+add_library(netroom_host STATIC
+    netroom/host/composition_kit.h
+    netroom/host/composition_kit.cpp
+)
+target_include_directories(netroom_host PUBLIC )
+target_link_libraries(netroom_host PUBLIC netroom_ipc)
+
+add_executable(test_composition_kit tests/test_composition_kit.cpp)
+target_link_libraries(test_composition_kit PRIVATE netroom_host)
+add_test(NAME composition_kit COMMAND test_composition_kit)

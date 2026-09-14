@@ -17,6 +17,13 @@ class CTextService : public ITfTextInputProcessorEx,
                      public ITfCompositionSink,
                      public ITfCleanupContextSink {
 public:
+// 供 CEditSession 自由回调访问的编辑会话入口（TSF 调用线程内执行）
+    bool StartCompInSession(TfEditCookie ec, ITfContext* pic);
+    bool UpdateCompInSession(TfEditCookie ec, ITfContext* pic, const std::wstring& text);
+    bool EndCompInSession(TfEditCookie ec, ITfContext* pic);
+    ITfComposition* Composition() const { return composition_; }
+    void ClearCompositionPtr() { if (composition_) { composition_->Release(); composition_ = nullptr; } }
+    // IPC（仅当一个方向是 Producer）。注意：TextService.dll 是被注入宿主进程，
     CTextService();
     ~CTextService();
 
@@ -65,12 +72,13 @@ private:
                               std::uint32_t caret);
     bool CommitComposition(ITfContext* pic, const std::string& utf8);
     void ClearCompositionCache();
+    void EndCompositionNow();            // 在写编辑会话内结束组合
+    bool RequestWriteSession(ITfContext* pic, void(*fn)(TfEditCookie, void*), void* ctx);
 
     // 缓存焦点上下文（非自增持有，生命周期由 TSF 保证在 Activate 存活期内）
     ITfContext* focusContext_ = nullptr;
     ITfDocumentMgr* focusDocMgr_ = nullptr;
 
-    // IPC（仅当一个方向是 Producer）。注意：TextService.dll 是被注入宿主进程，
     // Daemon 是独立进程；此处使用命名共享内存通道。
     std::unique_ptr<netroom::ipc::ImeChannel> keySend_;   // Host(Producer)->Daemon
     std::unique_ptr<netroom::ipc::ImeChannel> candRecv_;  // Daemon(Producer)->Host(Consumer)
@@ -78,6 +86,7 @@ private:
 
     // 组合状态
     bool composing_ = false;
+    ITfComposition* composition_ = nullptr;    // 当前组合（如已起动）
     std::string pendingText_;   // 最近候选帧的组合串（UTF-8）用作兜底
 
     // 引用计数
