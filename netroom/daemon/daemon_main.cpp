@@ -51,6 +51,8 @@ int wmain(int argc, wchar_t** argv) {
                 if (!DecodeKey(body.data(), len, kf)) continue;
 
                 bool consumed = engine->ProcessKey(kf.body, &out);
+                std::wprintf(L"[netroom] recv key frame consumed=%ld\n", consumed ? 1L : 0L);
+                std::fflush(stdout);
                 if (consumed) {
                     std::vector<std::uint8_t> enc;
                     if (!EncodeCandidate(out, enc, kMaxBodyLen)) continue;
@@ -59,6 +61,8 @@ int wmain(int argc, wchar_t** argv) {
                     oh.kind  = static_cast<std::uint16_t>(FrameKind::Candidate);
                     if (candCh.Ring().Produce(oh, enc.data(), (std::uint32_t)enc.size(), 0)) {
                         candCh.Notify();
+                        std::wprintf(L"[netroom] sent candidate frame\n");
+                        std::fflush(stdout);
                     }
                 }
             }

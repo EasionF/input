@@ -107,6 +107,10 @@ static void RegisterTipAt(HKEY root, const std::wstring& gs, const std::wstring&
     WriteStr(root, tip + L"\\Category\\Item\\" + gs, nullptr, L"netroom input method");
     WriteStr(root, tip + L"\\Category\\Item\\" + gs +
                  L"\\{6302DE22-A5CF-4B02-BFE8-4D72B2BED3C6}", nullptr, L"");
+    // 每语言输入法类别（Win+Space 切换列表据此枚举）
+    WriteStr(root, tip + L"\\Category\\Category\\{34745C63-B2F0-4784-8B67-5E12C8701A31}\\" + gs, nullptr, L"");
+    WriteStr(root, tip + L"\\Category\\Item\\" + gs +
+                 L"\\{34745C63-B2F0-4784-8B67-5E12C8701A31}", nullptr, L"");
     const LANGID kLangs[] = { 0x0409, 0x0804 };   // en-US / zh-CN
     for (LANGID lang : kLangs) {
         wchar_t langKey[64];
