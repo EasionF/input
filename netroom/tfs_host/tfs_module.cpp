@@ -91,50 +91,50 @@ STDMETHODIMP DllCanUnloadNow() {
     return (g_cRefDll == 0 && g_cRefClass == 0) ? S_OK : S_FALSE;
 }
 
-STDMETHODIMP DllRegisterServer() {
-    std::wstring gs  = GuidToString(CLSID_NetRoomTextService);
-    std::wstring pg  = GuidToString(GUID_NetRoomProfile);
-    const HKEY root = HKEY_CURRENT_USER;
+static void RegisterTipAt(HKEY root, const std::wstring& gs, const std::wstring& pg,
+                          const wchar_t* dllPath) {
     std::wstring tip = std::wstring(L"Software\\Microsoft\\CTF\\TIP\\") + gs;
     std::wstring cl  = std::wstring(L"Software\\Classes\\CLSID\\") + gs;
     std::wstring inproc = cl + L"\\InprocServer32";
-
-    wchar_t dllPath[MAX_PATH] = {0};
-    HMODULE hmod = nullptr;
-    ::GetModuleHandleExW(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS |
-                             GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
-                         reinterpret_cast<LPCWSTR>(&DllRegisterServer), &hmod);
-    ::GetModuleFileNameW(hmod, dllPath, MAX_PATH);
-
     WriteStr(root, cl, nullptr, L"netroom input method");
     WriteStr(root, inproc, nullptr, dllPath);
     WriteStr(root, inproc, L"ThreadingModel", L"Both");
-
     WriteStr(root, tip, nullptr, L"netroom input method");
-    // TIP 级启用标记
+    WriteStr(root, tip + L"\\InprocServer32", nullptr, dllPath);   // 兼容旧式 TIP
     WriteDword(root, tip + L"\\Enable", L"", 1);
-    // 语言配置文件：TSF 依据它把文本服务列为一种“输入法”。
-    // 值 {0x00000000} 为显示名（可按 len-res 形式，这里直接用字符串）。
-    // 同时注册英语(US,0409) 与简体中文(CN,0804)，最大化可枚举性
     std::wstring iconFile = std::wstring(dllPath) + L",0";
-    const LANGID kLangs[] = { 0x0409, 0x0804 };
+    const LANGID kLangs[] = { 0x0409, 0x0804 };   // en-US / zh-CN
     for (LANGID lang : kLangs) {
-        wchar_t langKey[16];
+        wchar_t langKey[64];
         wsprintfW(langKey, L"\\LanguageProfile\\%08X\\", static_cast<unsigned>(lang));
         std::wstring lp = tip + langKey + pg;
         WriteStr(root, lp, nullptr, L"");
         WriteStr(root, lp, L"{0x00000000}", L"netroom input method");
         WriteStr(root, lp, L"{0x00000001}", iconFile.c_str());
     }
-    // 键盘布局入口（US 0409）
     WriteDword(root, tip + L"\\KeyboardLayout\\00000409", L"", 0xE0200804);
+}
 
-    // 官方 API 注册 + 使能：最可靠地让 OS 枚举出该输入法
+STDMETHODIMP DllRegisterServer() {
+    wchar_t dllPath[MAX_PATH] = {0};
+    HMODULE hmod = nullptr;
+    ::GetModuleHandleExW(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS |
+                             GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
+                         reinterpret_cast<LPCWSTR>(&DllRegisterServer), &hmod);
+    ::GetModuleFileNameW(hmod, dllPath, MAX_PATH);
+    std::wstring gs = GuidToString(CLSID_NetRoomTextService);
+    std::wstring pg = GuidToString(GUID_NetRoomProfile);
+    // 全用户(HKLM) 与当前用户(HKCU) 都注册；HKLM 需管理员权限运行 regsvr32。
+    RegisterTipAt(HKEY_LOCAL_MACHINE, gs, pg, dllPath);
+    RegisterTipAt(HKEY_CURRENT_USER, gs, pg, dllPath);
+
+    // 官方 API：让 OS 真正把该文本服务作为输入法启用
     ::CoInitializeEx(nullptr, COINIT_MULTITHREADED);
     ITfInputProcessorProfiles* pProfiles = nullptr;
     if (SUCCEEDED(::CoCreateInstance(CLSID_TF_InputProcessorProfiles, nullptr, CLSCTX_INPROC_SERVER,
                                      IID_ITfInputProcessorProfiles, (void**)&pProfiles))) {
         const wchar_t kDesc[] = L"netroom input method";
+        const LANGID kLangs[] = { 0x0409, 0x0804 };
         for (LANGID lang : kLangs) {
             pProfiles->AddLanguageProfile(CLSID_NetRoomTextService, lang,
                                           GUID_NetRoomProfile, kDesc,
@@ -150,12 +150,13 @@ STDMETHODIMP DllRegisterServer() {
 }
 
 STDMETHODIMP DllUnregisterServer() {
-    std::wstring gs  = GuidToString(CLSID_NetRoomTextService);
-    std::wstring pg  = GuidToString(GUID_NetRoomProfile);
-    const HKEY root = HKEY_CURRENT_USER;
-    ClearTree(root, std::wstring(L"Software\\Microsoft\\CTF\\TIP\\") + gs);
-    ClearTree(root, std::wstring(L"Software\\Classes\\CLSID\\") + gs);
-    // 官方 API 注销
+    std::wstring gs = GuidToString(CLSID_NetRoomTextService);
+    std::wstring pg = GuidToString(GUID_NetRoomProfile);
+    const HKEY roots[] = { HKEY_LOCAL_MACHINE, HKEY_CURRENT_USER };
+    for (HKEY root : roots) {
+        ClearTree(root, std::wstring(L"Software\\Microsoft\\CTF\\TIP\\") + gs);
+        ClearTree(root, std::wstring(L"Software\\Classes\\CLSID\\") + gs);
+    }
     ::CoInitializeEx(nullptr, COINIT_MULTITHREADED);
     ITfInputProcessorProfiles* pProfiles = nullptr;
     if (SUCCEEDED(::CoCreateInstance(CLSID_TF_InputProcessorProfiles, nullptr, CLSCTX_INPROC_SERVER,
