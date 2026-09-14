@@ -48,3 +48,26 @@ if(NETROOM_BUILD_TFS)
         OUTPUT_NAME "netroom_tsf"
         PREFIX "")
 endif()
+# ---- 输入引擎：内置拼音（M0 落底实现） ----
+add_library(netroom_engine STATIC
+    netroom/daemon/engine.h
+    netroom/daemon/pinyin_engine.h
+    netroom/daemon/pinyin_engine.cpp
+)
+target_include_directories(netroom_engine PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
+target_link_libraries(netroom_engine PUBLIC netroom_ipc)
+
+add_executable(netroom_daemon netroom/daemon/daemon_main.cpp)
+target_link_libraries(netroom_daemon PRIVATE netroom_engine)
+
+# 引擎单元 + 端到端 daemon 进程集成（需构建 netroom_daemon.exe）
+option(NETROOM_BUILD_DAEMON_TESTS "" ON)
+if(NETROOM_BUILD_DAEMON_TESTS)
+    add_executable(test_pinyin_engine tests/test_pinyin_engine.cpp)
+    target_link_libraries(test_pinyin_engine PRIVATE netroom_engine)
+    add_test(NAME pinyin COMMAND test_pinyin_engine)
+    add_executable(test_start_daemon tests/test_start_daemon.cpp)
+    target_link_libraries(test_start_daemon PRIVATE netroom_engine)
+    add_test(NAME daemon_integration COMMAND test_start_daemon)
+    set_tests_properties(daemon_integration PROPERTIES TIMEOUT 60)
+endif()

@@ -48,7 +48,7 @@ ImeChannel::ImeChannel(const std::wstring& name, const std::wstring& evt,
 
     base_ = MapViewOfFile(mapHandle_, FILE_MAP_ALL_ACCESS, 0, 0, regionBytes);
     if (!base_) throw std::runtime_error("MapViewOfFile failed");
-    ring_ = std::make_unique<RingBuffer>(base_, regionBytes, role);
+    ring_ = std::make_unique<RingBuffer>(base_, regionBytes, role, isCreator);
 }
 
 ImeChannel::~ImeChannel() {

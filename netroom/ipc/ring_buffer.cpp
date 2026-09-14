@@ -10,14 +10,14 @@ constexpr std::uint32_t kSlotOverhead = sizeof(ImeFrameHeader);
 constexpr std::uint32_t kSlotContent  = kSlotBytes - sizeof(ImeFrameHeader);
 }
 
-RingBuffer::RingBuffer(void* region, std::size_t regionBytes, Role role)
+RingBuffer::RingBuffer(void* region, std::size_t regionBytes, Role role, bool initHeader)
     : regionBytes_(regionBytes), role_(role) {
     if (region == nullptr || regionBytes < RequiredRegionBytes())
         throw std::invalid_argument("RingBuffer region too small or null");
     hdr_ = reinterpret_cast<ImeSharedRingHeader*>(region);
     slots_ = reinterpret_cast<std::uint8_t*>(reinterpret_cast<std::uint8_t*>(region) + HeaderBytes());
 
-    if (role_ == Role::Producer) {
+    if (initHeader) {
         std::memset(hdr_, 0, HeaderBytes());          // 清零头部后按契约重建
         hdr_->magic      = kRingMagic;
         hdr_->abiVersion = kAbiVersion;

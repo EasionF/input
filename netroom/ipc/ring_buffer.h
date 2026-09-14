@@ -14,7 +14,8 @@ class RingBuffer {
 public:
     enum class Role { Producer, Consumer };
 
-    RingBuffer(void* region, std::size_t regionBytes, Role role);
+    RingBuffer(void* region, std::size_t regionBytes, Role role,
+                 bool initHeader = true);
     ~RingBuffer() = default;
 
     static constexpr std::size_t HeaderBytes() {

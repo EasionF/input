@@ -104,15 +104,14 @@ STDMETHODIMP CTextService::Deactivate() {
 void CTextService::InitIpc() {
     try {
         // 命名空间：用客户端进程 PID 区分多实例，避免多宿主进程串号
-        std::wstring base = L"netroom_";
-        base += std::to_wstring(::GetCurrentProcessId());
-        base += L"_";
-        base += std::to_wstring(clientId_);
+        // 会话级通道名：与单个用户守护进程约定固定命名空间（单活动组合上下文）。
+        // Host 侧一律为 connector；通道实体由 Daemon 创建并 init 头部。
+        const std::wstring base = L"netroom_";
 
         keySend_ = std::make_unique<ImeChannel>(
-            base + L"_key", base + L"_keyevt", RingBuffer::Role::Producer, /*isCreator*/false);
+            base + L"key", base + L"keyevt", RingBuffer::Role::Producer, /*isCreator*/false);
         candRecv_ = std::make_unique<ImeChannel>(
-            base + L"_cand", base + L"_candevt", RingBuffer::Role::Consumer, /*isCreator*/false);
+            base + L"cand", base + L"candevt", RingBuffer::Role::Consumer, /*isCreator*/false);
         ipcReady_ = true;
     } catch (const std::exception&) {
         // Daemon 未启动或绑定失败 -> 保持 passthrough
