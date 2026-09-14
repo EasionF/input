@@ -9,22 +9,25 @@ if not exist "%DLL%" (
   exit /b 1
 )
 
-echo (1/3) Register HKLM - a UAC prompt will pop. Click Yes.
+echo (1/4) Register HKLM - a UAC prompt pops. Click Yes.
 powershell.exe -NoProfile -Command ^
   "Start-Process -Verb RunAs -FilePath 'regsvr32.exe' -ArgumentList '/s','"%DLL%"' -Wait"
 
-echo (2/3) Register HKCU fallback.
+echo (2/4) Register HKCU.
 regsvr32 /s "%DLL%"
 
-echo (3/3) Restart TSF host so the input list refreshes now (no reboot).
+echo (3/4) Refresh TSF/input stack now (no reboot): restart ctfmon and explorer.
 taskkill /f /im ctfmon.exe >nul 2>&1
-timeout /t 2 /nobreak >nul
+timeout /t 1 /nobreak >nul
+taskkill /f /im explorer.exe >nul 2>&1
+timeout /t 3 /nobreak >nul
 
-echo Start builtin pinyin daemon (ESC to quit).
-start "netroom-daemon" cmd /k "cd /d build-msvc\Release && netroom_daemon.exe"
+echo (4/4) Start builtin pinyin engine daemon (press ESC in any window quits it).
+start "" /D "%CD%\build-msvc\Release" netroom_daemon.exe
 
 echo.
-echo Done. Open Settings, then Time and Language, then Language, then Keyboards.
-echo If netroom is not listed yet, press Win+Space once; otherwise sign out and back in.
-echo Then Win+Space to switch to netroom and type pinyin (say ni) in Notepad.
+echo Done. Now press Win+Space, or click the input indicator at bottom-right,
+echo and choose netroom. Type pinyin (ni) in Notepad, space/number to commit.
+echo If netroom is still absent: Settings > Time & Language > Language > (your language)
+echo   > Keyboards > Add a keyboard > netroom. As a last resort, sign out and back in once.
 endlocal
