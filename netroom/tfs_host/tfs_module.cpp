@@ -115,11 +115,17 @@ STDMETHODIMP DllRegisterServer() {
     WriteDword(root, tip + L"\\Enable", L"", 1);
     // 语言配置文件：TSF 依据它把文本服务列为一种“输入法”。
     // 值 {0x00000000} 为显示名（可按 len-res 形式，这里直接用字符串）。
-    std::wstring langProfile = tip + L"\\LanguageProfile\\00000409\\" + pg;
-    WriteStr(root, langProfile, nullptr, L"");
-    WriteStr(root, langProfile, L"{0x00000000}", L"netroom input method");
+    // 同时注册英语(US,0409) 与简体中文(CN,0804)，最大化可枚举性
     std::wstring iconFile = std::wstring(dllPath) + L",0";
-    WriteStr(root, langProfile, L"{0x00000001}", iconFile.c_str());
+    const LANGID kLangs[] = { 0x0409, 0x0804 };
+    for (LANGID lang : kLangs) {
+        wchar_t langKey[16];
+        wsprintfW(langKey, L"\\LanguageProfile\\%08X\\", static_cast<unsigned>(lang));
+        std::wstring lp = tip + langKey + pg;
+        WriteStr(root, lp, nullptr, L"");
+        WriteStr(root, lp, L"{0x00000000}", L"netroom input method");
+        WriteStr(root, lp, L"{0x00000001}", iconFile.c_str());
+    }
     // 键盘布局入口（US 0409）
     WriteDword(root, tip + L"\\KeyboardLayout\\00000409", L"", 0xE0200804);
 
@@ -129,12 +135,14 @@ STDMETHODIMP DllRegisterServer() {
     if (SUCCEEDED(::CoCreateInstance(CLSID_TF_InputProcessorProfiles, nullptr, CLSCTX_INPROC_SERVER,
                                      IID_ITfInputProcessorProfiles, (void**)&pProfiles))) {
         const wchar_t kDesc[] = L"netroom input method";
-        pProfiles->AddLanguageProfile(CLSID_NetRoomTextService, 0x0409,
-                                      GUID_NetRoomProfile, kDesc,
-                                      static_cast<ULONG>(wcslen(kDesc)),
-                                      dllPath, static_cast<ULONG>(wcslen(dllPath)), 0);
-        pProfiles->EnableLanguageProfile(CLSID_NetRoomTextService, 0x0409,
-                                         GUID_NetRoomProfile, TRUE);
+        for (LANGID lang : kLangs) {
+            pProfiles->AddLanguageProfile(CLSID_NetRoomTextService, lang,
+                                          GUID_NetRoomProfile, kDesc,
+                                          static_cast<ULONG>(wcslen(kDesc)),
+                                          dllPath, static_cast<ULONG>(wcslen(dllPath)), 0);
+            pProfiles->EnableLanguageProfile(CLSID_NetRoomTextService, lang,
+                                             GUID_NetRoomProfile, TRUE);
+        }
         pProfiles->Release();
     }
     ::CoUninitialize();
@@ -152,7 +160,10 @@ STDMETHODIMP DllUnregisterServer() {
     ITfInputProcessorProfiles* pProfiles = nullptr;
     if (SUCCEEDED(::CoCreateInstance(CLSID_TF_InputProcessorProfiles, nullptr, CLSCTX_INPROC_SERVER,
                                      IID_ITfInputProcessorProfiles, (void**)&pProfiles))) {
-        pProfiles->RemoveLanguageProfile(CLSID_NetRoomTextService, 0x0409, GUID_NetRoomProfile);
+        const LANGID kLangs[] = { 0x0409, 0x0804 };
+        for (LANGID lang : kLangs) {
+            pProfiles->RemoveLanguageProfile(CLSID_NetRoomTextService, lang, GUID_NetRoomProfile);
+        }
         pProfiles->Release();
     }
     ::CoUninitialize();
